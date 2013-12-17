@@ -1,0 +1,22 @@
+
+
+task t1a
+task t1b: lax
+task t1c : lax
+task t1d1, t1d2
+task t1e1, t1e2: lax
+task t1f1, t1f2 : lax
+
+task t2a[]
+task t2b[]: lax
+task t2c[] : lax
+task t2d1[], t2d2[]
+task t2e1[], t2e2[]: lax
+task t2f1[], t2f2[] : lax
+
+task t3a[09:30 tis 27dec 2013]
+task t3b[09:30 tis 27dec 2013]: lax
+task t3c[09:30 tis 27dec 2013] : lax
+task t3d1[09:30 tis 27dec 2013], t3d2[09:30 tis 27dec 2013]
+task t3e1[09:30 tis 27dec 2013], t3e2[09:30 tis 27dec 2013]: lax
+task t3f1[]09:30 tis 27dec 2013, t3f2[09:30 tis 27dec 2013] : lax
