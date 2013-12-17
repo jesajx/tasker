@@ -1,0 +1,8 @@
+
+
+task a
+task b: lax
+task c : lax
+task d1, d2
+task e1, e2: lax
+task f1, f2 : lax

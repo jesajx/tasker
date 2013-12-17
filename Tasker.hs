@@ -1,9 +1,7 @@
 
 module Tasker
 ( Task(..)
-, name
-, description
-, parseTaskFile
+--, parseTaskFile
 ) where
 
 import Text.ParserCombinators.Parsec
@@ -15,120 +13,129 @@ import System.IO ( stdin, stdout
                  , IOMode(ReadMode, WriteMode)
                  , hGetContents, hPutStrLn
                  )
+import System.Locale (defaultTimeLocale)
 import System.Environment (getArgs)
 import Control.Monad (when)
+import Data.Time
 
-data Task = Task String String
-          | TaskGroup String [Task]
+data Task = Task { name :: String,
+                   deadline :: Maybe UTCTime,
+                   description :: String }
+          | TaskGroup { name :: String, tasks :: [Task] }
           deriving Show
 
-name :: Task -> String
-name (Task name _) = name
+isAtomTask (Task _ _ _) = True
+isAtomTask _ = False
 
-description :: Task -> String
-description (Task _ description) = description
-
-normalize :: [Task] -> [Task]
-normalize ts = concatMap (normalize' "") ts
-    where normalize' p (Task s d) = [Task (newName p s) d]
-          normalize' p (TaskGroup s t) =
-              concatMap (normalize' $ newName p s) t
-          newName "" x = x
-          newName p x = p ++ '.':x
+isTaskGroup (TaskGroup _ _) = True
+isTaskGroup _ = False
 
 ------
 
--- parseTaskFile = items
--- items = (spaces*, item, spaces*)*
--- item = task | group
--- task = "task", ' '+, name, (',', ' '+, name)*, description?, '\n'
--- description = ' '+, ": ", -'\n'+
--- group = "group", ' '+, name, (',', ' '+, name)*, groupCont?, '\n'
--- groupCont = '{', items, spaces*, '}'
--- name = %alpha
 
-
-parseTaskFile :: String -> Either ParseError [Task]
-parseTaskFile s = parse p "" s
-    where p = do
-            many sl
-            ts <- items
-            eof
-            return ts
-
---items = return . concat =<< option [] (many $ between spaces spaces item)
-items = do
-    ts <- many $ do
-        t <- item
-        many sl
-        return t
-    return $ concat ts
-    
-
-item = task <|> group
-
-task = do
-    ns <- typeAndName "task"
-    d <- option "" descriptionParser
-    newline
-    return $ map (`Task` d) ns
-
-group = do
-    ns <- typeAndName "group"
-    ts <- option [] groupContent
-    newline
-    return $ map (`TaskGroup` ts) ns
-    
-names = sepBy1 cont sep
-    where cont = do
-            s <- nameParser
-            many sp
-            return s
-          sep = do
-            char ','
-            many sp
-    
 sp = char ' '
-sl = oneOf " \n"
+sps = many sp
+sps1 = many1 sp
 
+-- | Parses p then s and returns the result from p.
+followedBy p s = do {x <- p; s; return x}
 
-nameParser = many1 $ noneOf " ,\n:"
+-- | Parses one of the strings from the given list.
+-- Empty list means error.
+oneOfList ss = foldr1 (<|>) ss
 
+-- | Repeats a parse n times and returns the results as a list.
+rep n p
+    | n<0 = error "rep n for n<0"
+    | otherwise = rep' n p
+rep' 0 _ = return []
+rep' n p = do
+    x <- p
+    y <- rep (n-1) p
+    return (x:y)
+
+nameParser :: Parser String
+nameParser = many1 alphaNum
+
+taskNames :: Parser [(String, Maybe UTCTime)]
+taskNames = sepBy1 np sp
+    where np = do
+            n <- nameParser; sps
+            dt <- option Nothing deadlineParser; sps
+            return (n,dt)
+          sp = char ',' `followedBy` spaces
+
+descriptionParser :: Parser String
 descriptionParser = do
-    many sp
-    string ": "
-    manyTill anyChar $ try newline
+    string ":"
+    option "" $ do
+        sp
+        many $ noneOf "\n"
+
+
+-- Parses datetimestring in format "[ 09:30 2013-12-27 ]".
+deadlineParser = do
+    char '['
+    sps
+    s <- many $ digit <|> sp <|> oneOf ":-"
+    sps
+    char ']'
+    return $ parseTime defaultTimeLocale fmt $ unwords $ words s --pad
+    where fmt = "%H:%M %Y-%m-%d"
+
+
+task :: Parser [Task]
+task = do
+    string "task"
+    sps1
+    nsdt <- taskNames
+    d <- option "" descriptionParser
+    return $ map (\(n,dt) -> Task n dt d) nsdt
 
     
-groupContent = do
-    char '{'
-    many sl
-    t <- items
-    char '}'
-    return t
+group :: Parser [Task]
+group = do
+    string "group"
+    sps1
+    n <- nameParser
+    sps
+    ts <- option [] $ between (char '{') (char '}') items
+    return $ [TaskGroup n ts]
 
-typeAndName s = do
-    string s
-    many1 sp
-    names
+item :: Parser [Task]
+item = task <|> group -- TODO dep
+
+items :: Parser [Task]
+items = do
+    spaces
+    option [] $ do
+        i <- item
+        sps
+        r <- option [] $ do
+            newline
+            items
+        return (i++r)
+
+taskFileParser = do
+    r <- items
+    eof
+    return r
 
 
+------
 
-----
-
--- TODO
--- read file
--- normalize
--- priority
--- deadline
--- generalize description?
--- 
 main = do
     args <- getArgs
-    cont <- readFile $ args !! 0
-    let et = parseTaskFile cont
-    let t = case et of Right k -> k -- TODO where is 'fromRight'?
-    putStrLn "#tasks/groups:"
-    mapM_ print t 
-    putStrLn "#normalized:"
-    mapM_ print $ normalize t 
+    let arg1 = args !! 0
+    cont <- readFile arg1
+    case parse taskFileParser arg1 cont of
+        Right t -> do
+            putStrLn "#tasks/groups:"
+            mapM_ print t 
+        Left err -> print err
+
+
+-- TODO REM
+test s = case parse taskFileParser  "" s of
+    Right x -> mapM_ print x
+    Left err -> print err

@@ -1,0 +1,31 @@
+
+
+
+parseTaskFile = items ;
+items = sps | sps, item | sps, item, sps, itemSep, items ;
+
+items = sps, [item, sps, [newline, items]] ;
+item = task | group ;
+
+task = "task", sps1, taskNames, [description] ;
+group = "group", sps1, name, sps, ["{", items, "}"] ;
+
+taskNames = name, sps, deadline, sps, [",", sps, taskNames] ;
+description = ": ", ?noneOf:newline? ;
+
+deadline = "[", sps, deadlineContent, sps "]" ;
+deadlineContent = [time, sps1], date
+time = digit, digit, ":", digit, digit;
+date = year, "-", month, "-", day ;
+year = digit, digit, digit, digit ;
+month = digit, digit ;
+day = digit, digit ;
+
+
+name = ?alphanum?, {?alphanum?} ;
+
+newline = "\n" ;
+sps1 = space, spaces ;
+sps = {space} ;
+sp = " " ;
+digit = 1|2|3|4|5|6|7|8|9;
