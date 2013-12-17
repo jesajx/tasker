@@ -22,7 +22,8 @@ month = digit, digit ;
 day = digit, digit ;
 
 
-name = ?alphanum?, {?alphanum?} ;
+name = nameChar, {nameChar}
+nameChar = ?alphaNum? | "-" | "_" | "." ;
 
 newline = "\n" ;
 sps1 = space, spaces ;

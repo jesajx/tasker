@@ -1,7 +1,7 @@
 
 module Tasker
 ( Task(..)
---, parseTaskFile
+, taskParser
 ) where
 
 import Text.ParserCombinators.Parsec
@@ -24,38 +24,52 @@ data Task = Task { name :: String,
           | TaskGroup { name :: String, tasks :: [Task] }
           deriving Show
 
-isAtomTask (Task _ _ _) = True
-isAtomTask _ = False
+-- TODO instances
 
+-- | True iff the task is not a TaskGroup. Otherwise false.
+isTask (Task _ _ _) = True
+isTask _ = False
+
+-- | True iff the task is a TaskGroup. Otherwise false.
 isTaskGroup (TaskGroup _ _) = True
 isTaskGroup _ = False
 
-------
+-- | Takes a list of tasks and taskgroups and returns a list of tasks.
+-- The name of each task is changed to reflect its parent group,
+-- like: groupName++"."++taskName
+-- This is done recursivly for TaskGroups and no taskgroup
+-- remains in the result.
+normalize :: [Task] -> [Task]
+normalize = concatMap (normalize' "")
+
+normalize' :: String -> Task -> [Task]
+normalize' p t = case t of
+    Task k dt d    -> [Task (normname p k) dt d]
+    TaskGroup k tt -> concatMap (normalize' $ normname p k) tt
+    where normname "" x = x
+          normname p x = p++'.':x
 
 
-sp = char ' '
-sps = many sp
-sps1 = many1 sp
+
+
+-- ------------------------------------------------------------------------- --
+-- =================================PARSING================================= --
+-- ------------------------------------------------------------------------- --
+
 
 -- | Parses p then s and returns the result from p.
 followedBy p s = do {x <- p; s; return x}
 
--- | Parses one of the strings from the given list.
--- Empty list means error.
-oneOfList ss = foldr1 (<|>) ss
+-- Because I don't like tab-chars among others.
+sp = char ' '
+sps = many sp
+sps1 = many1 sp
 
--- | Repeats a parse n times and returns the results as a list.
-rep n p
-    | n<0 = error "rep n for n<0"
-    | otherwise = rep' n p
-rep' 0 _ = return []
-rep' n p = do
-    x <- p
-    y <- rep (n-1) p
-    return (x:y)
-
+-- | Parses a task-name.
+-- Allowed chars: a-z, A-Z, 0-9, "-", "_", ".".
+-- Note that "." is allowed! See normalize.
 nameParser :: Parser String
-nameParser = many1 alphaNum
+nameParser = many1 $ alphaNum <|> oneOf "-_."
 
 taskNames :: Parser [(String, Maybe UTCTime)]
 taskNames = sepBy1 np sp
@@ -73,15 +87,31 @@ descriptionParser = do
         many $ noneOf "\n"
 
 
--- Parses datetimestring in format "[ 09:30 2013-12-27 ]".
+-- | Parses datetimestring in format "[ 09:30  2013-12-27 ]".
 deadlineParser = do
     char '['
     sps
-    s <- many $ digit <|> sp <|> oneOf ":-"
+    dt <- option Nothing $ do
+        st <- option "00:00" $ time `followedBy` sps1
+        sd <- date
+        let fmt = "%H:%M %Y-%m-%d"
+        return $ parseTime defaultTimeLocale fmt $ st ++ ' ':sd
     sps
     char ']'
-    return $ parseTime defaultTimeLocale fmt $ unwords $ words s --pad
-    where fmt = "%H:%M %Y-%m-%d"
+    return dt
+time = do
+    sh <- count 2 digit
+    char ':'
+    sm <- count 2 digit
+    return $ sh++':':sm
+date = do
+    y <- count 4 digit
+    char '-'
+    m <- count 2 digit
+    char '-'
+    d <- count 2 digit
+    return $ y++'-':m++'-':d
+    
 
 
 task :: Parser [Task]
@@ -116,26 +146,31 @@ items = do
             items
         return (i++r)
 
-taskFileParser = do
+taskParser :: Parser [Task]
+taskParser = do
     r <- items
     eof
     return r
 
 
-------
+-- -------------------------------------------------------------------------- --
+-- ===================================MAIN=================================== --
+-- -------------------------------------------------------------------------- --
 
 main = do
     args <- getArgs
     let arg1 = args !! 0
     cont <- readFile arg1
-    case parse taskFileParser arg1 cont of
-        Right t -> do
-            putStrLn "#tasks/groups:"
-            mapM_ print t 
+    case parse taskParser arg1 cont of
+        Right ts -> do
+            putStrLn "tasks:"
+            mapM_ print ts
+            putStrLn "#norms:"
+            mapM_ (print) $ normalize ts
         Left err -> print err
 
 
 -- TODO REM
-test s = case parse taskFileParser  "" s of
+test s = case parse taskParser  "" s of
     Right x -> mapM_ print x
     Left err -> print err
