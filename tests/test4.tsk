@@ -1,0 +1,8 @@
+
+group a
+group b{}
+group c{ }
+group d{
+}
+group e{
+       }

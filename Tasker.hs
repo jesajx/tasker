@@ -2,20 +2,11 @@
 module Tasker
 ( Task(..)
 , taskParser
+, normalize
 ) where
 
 import Text.ParserCombinators.Parsec
-import Data.Functor ((<$>))
-import Data.List (intercalate)
-
-import System.IO ( stdin, stdout
-                 , openFile, hClose
-                 , IOMode(ReadMode, WriteMode)
-                 , hGetContents, hPutStrLn
-                 )
 import System.Locale (defaultTimeLocale)
-import System.Environment (getArgs)
-import Control.Monad (when)
 import Data.Time
 
 data Task = Task { name :: String,
@@ -151,24 +142,6 @@ taskParser = do
     r <- items
     eof
     return r
-
-
--- -------------------------------------------------------------------------- --
--- ===================================MAIN=================================== --
--- -------------------------------------------------------------------------- --
-
-main = do
-    args <- getArgs
-    let arg1 = args !! 0
-    cont <- readFile arg1
-    case parse taskParser arg1 cont of
-        Right ts -> do
-            putStrLn "tasks:"
-            mapM_ print ts
-            putStrLn "#norms:"
-            mapM_ (print) $ normalize ts
-        Left err -> print err
-
 
 -- TODO REM
 test s = case parse taskParser  "" s of
