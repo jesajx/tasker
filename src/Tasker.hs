@@ -27,7 +27,8 @@ isTaskGroup _ = False
 
 -- | Takes a list of tasks and taskgroups and returns a list of tasks.
 -- The name of each task is changed to reflect its parent group,
--- like: groupName++"."++taskName
+-- like:
+-- > groupName++"."++taskName
 -- This is done recursivly for TaskGroups and no taskgroup
 -- remains in the result.
 normalize :: [Task] -> [Task]
@@ -51,14 +52,13 @@ normalize' p t = case t of
 -- | Parses p then s and returns the result from p.
 followedBy p s = do {x <- p; s; return x}
 
--- Because I don't like tab-chars among others.
 sp = char ' '
 sps = many sp
 sps1 = many1 sp
 
 -- | Parses a task-name.
--- Allowed chars: a-z, A-Z, 0-9, "-", "_", ".".
--- Note that "." is allowed! See normalize.
+-- Allowed chars: a-z, A-Z, 0-9, \'-\', \'_\', \'.\'.
+-- Note that \'.\' is allowed! See normalize.
 nameParser :: Parser String
 nameParser = many1 $ alphaNum <|> oneOf "-_."
 
@@ -78,7 +78,7 @@ descriptionParser = do
         many $ noneOf "\n"
 
 
--- | Parses datetimestring in format "[ 09:30  2013-12-27 ]".
+-- | Parses datetimestring in format @[ 09:30  2013-12-27 ]@.
 deadlineParser = do
     char '['
     sps
@@ -137,6 +137,8 @@ items = do
             items
         return (i++r)
 
+-- | Parser for task-files.
+-- See ../taskerGrammar.bnf
 taskParser :: Parser [Task]
 taskParser = do
     r <- items
