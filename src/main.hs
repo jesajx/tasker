@@ -7,8 +7,8 @@ import System.IO ( stdin, stdout
                  , hGetContents, hPutStrLn
                  )
 import System.Environment (getArgs)
-
 import Text.ParserCombinators.Parsec (parse)
+import Data.List (sortBy)
 
 -- -------------------------------------------------------------------------- --
 -- ===================================MAIN=================================== --
@@ -22,7 +22,9 @@ main = do
         Right ts -> do
             putStrLn "tasks:"
             mapM_ print ts
-            putStrLn "#norms:"
+            putStrLn "norms:"
             mapM_ (print) $ normalize ts
+            putStrLn "sortByDeadline:"
+            mapM_ (print) $ sortBy cmpDeadline $ normalize ts
         Left err -> print err
 

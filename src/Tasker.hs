@@ -3,19 +3,28 @@ module Tasker
 ( Task(..)
 , taskParser
 , normalize
+, cmpDeadline
 ) where
 
 import Text.ParserCombinators.Parsec
 import System.Locale (defaultTimeLocale)
 import Data.Time
+import Data.Function (on)
 
+
+
+-- | The Task datatype.
+-- Can be a single task or a group of tasks.
+-- Note that the name is used as a key -
+-- different tasks should not have the same name!
 data Task = Task { name :: String,
                    deadline :: Maybe UTCTime,
                    description :: String }
           | TaskGroup { name :: String, tasks :: [Task] }
           deriving Show
 
--- TODO instances
+instance Eq Task where
+    (==) = on (==) name
 
 -- | True iff the task is not a TaskGroup. Otherwise false.
 isTask (Task _ _ _) = True
@@ -25,12 +34,21 @@ isTask _ = False
 isTaskGroup (TaskGroup _ _) = True
 isTaskGroup _ = False
 
--- | Takes a list of tasks and taskgroups and returns a list of tasks.
--- The name of each task is changed to reflect its parent group,
--- like:
--- > groupName++"."++taskName
--- This is done recursivly for TaskGroups and no taskgroup
--- remains in the result.
+-- | Reorganizes a list of task, renaming Tasks and removing TaskGroups.
+--
+-- The name of each task is changed to reflect its parent group, like:
+-- > newname = groupName++"."++taskName
+-- This is done recursivly for taskGroups, replacing each taskgroup
+-- with its children.
+--
+-- Example:
+-- @
+-- normalize
+--   [Task "n" _ _,
+--     TaskGroup "a" [Task "b", TaskGroup "c" [Task "d" _ _], TaskGroup "x" []]]
+-- == 
+-- [Task "n" _ _, Task "a.b", Task "a.c.d" _ _]
+-- @
 normalize :: [Task] -> [Task]
 normalize = concatMap (normalize' "")
 
@@ -42,12 +60,22 @@ normalize' p t = case t of
           normname p x = p++'.':x
 
 
+-- | Compares two Tasks by their deadline.
+--
+-- Earlier deadlines are ordered before later deadlines.
+-- 'Nothing' is orderered after everything else.
+-- This is function for TaskGroups.
+cmpDeadline :: Task -> Task -> Ordering
+cmpDeadline (Task _ ad _) (Task _ bd _) = cmp ad bd
+    where cmp Nothing Nothing = EQ
+          cmp x Nothing = GT
+          cmp Nothing y = LT
+          cmp (Just x) (Just y) = compare x y
 
 
 -- ------------------------------------------------------------------------- --
 -- =================================PARSING================================= --
 -- ------------------------------------------------------------------------- --
-
 
 -- | Parses p then s and returns the result from p.
 followedBy p s = do {x <- p; s; return x}
@@ -144,6 +172,7 @@ taskParser = do
     r <- items
     eof
     return r
+
 
 -- TODO REM
 test s = case parse taskParser  "" s of
