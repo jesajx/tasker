@@ -1,14 +1,24 @@
 
+# This document describes the grammar `tsk' expects
+# task-files (*.tsk) to follow.
+# The format of the format below is supposed to be a _variant_ of EBNF
+# and as such may not be EBNF at all.
+#
+# This document is intended merely as a way to keep track of the grammar
+# and is not used to generate haskell code or any such thing.
 
 
-parseTaskFile = items ;
+# Grammar starts in taskParser.
+
+taskParser = items, ?eof? ;
 items = sps | sps, item | sps, item, sps, itemSep, items ;
 
 items = sps, [item, sps, [newline, items]] ;
-item = task | group ;
+item = task | group | dep ;
 
 task = "task", sps1, taskNames, [description] ;
 group = "group", sps1, name, sps, ["{", items, "}"] ;
+dep = "dep", sps1, depNames, sps, ":", depNames ;
 
 taskNames = name, sps, deadline, sps, [",", sps, taskNames] ;
 description = ": ", ?noneOf:newline? ;
@@ -21,9 +31,14 @@ year = digit, digit, digit, digit ;
 month = digit, digit ;
 day = digit, digit ;
 
+depNames = nameref, sps, {",", sps, nameref} ;
 
 name = nameChar, {nameChar}
 nameChar = ?alphaNum? | "-" | "_" | "." ;
+
+nameref = namerefpart, {".", namerefpart} ;
+namerefpart  = "!" | "*" | name ;
+
 
 newline = "\n" ;
 sps1 = space, spaces ;
