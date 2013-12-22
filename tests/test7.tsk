@@ -1,0 +1,26 @@
+
+group a {task a1 : d-a1
+}
+
+group b { task b1 : d-b1
+}
+
+group c { task c1 : d-c1
+        }
+
+group d {
+task d1 : d-d1
+}
+
+group e {
+    task e1 : d-e1
+}
+
+group f {
+    task f1 : d-f1
+    task f2 : d-f2
+    group f3 {
+        task f3-1 : d-f3-1
+        task f3-2 : d-f3-2
+    }
+}

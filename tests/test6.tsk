@@ -17,3 +17,16 @@ task f1 }
 
 group g {
     task g1 }
+
+group h {
+    task h1
+}
+
+group i {
+    task i1
+    task i2
+    group i3 {
+        task i3-1
+        task i3-2
+    }
+}

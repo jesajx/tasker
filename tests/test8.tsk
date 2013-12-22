@@ -1,0 +1,12 @@
+
+
+task a : d-a
+task b : d-b
+
+dep a : b
+
+group c {
+    task c1 : d-c1
+    task c2 : d-c2
+    dep !.* : a
+}

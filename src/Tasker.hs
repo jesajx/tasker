@@ -136,11 +136,11 @@ dep = do
     deps <- depNames
     return $ map (`Td` deps) ns
 depNames = sepBy1 np sep >>= return . concat
-    where np = nameRef `followedBy` sls
-          sep = char ',' `followedBy` sls
+    where np = nameRef `followedBy` sps
+          sep = char ',' `followedBy` sps
 nameRef = sepBy1 np sep
     where np = (oneOf "!*" >>= \x -> return [x]) <|> nameParser
-          sep = char ',' `followedBy` sls
+          sep = char '.' `followedBy` sps
 
 
 
