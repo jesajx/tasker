@@ -2,11 +2,13 @@
 
 task a : d-a
 task b : d-b
+task c : d-c
 
-dep a : b
+dep a : b, c
+dep b : c
 
-group c {
-    task c1 : d-c1
-    task c2 : d-c2
-    dep !.* : a
+group d {
+    task d1 : d-d1
+    task d2 : d-d2
+    dep * : !.a
 }

@@ -7,7 +7,7 @@ import Text.ParserCombinators.Parsec
 import System.Locale (defaultTimeLocale)
 import Data.Time
 import Data.Function (on)
-import Data.List (partition, isPrefixOf, nub, groupBy, sortBy)
+import Data.List (partition, isPrefixOf, nub, groupBy, sortBy, intercalate)
 
 
 type Deadline = Maybe UTCTime
@@ -135,10 +135,10 @@ dep = do
     sps
     deps <- depNames
     return $ map (`Td` deps) ns
-depNames = sepBy1 np sep >>= return . concat
+depNames = sepBy1 np sep
     where np = nameRef `followedBy` sps
           sep = char ',' `followedBy` sps
-nameRef = sepBy1 np sep
+nameRef = sepBy1 np sep >>= return . intercalate "."
     where np = (oneOf "!*" >>= \x -> return [x]) <|> nameParser
           sep = char '.' `followedBy` sps
 
@@ -174,7 +174,7 @@ fixDeps rs = res
     where (tds,tt) = partition isTd rs
           isTd (Td _ _) = True
           isTd (Tt _ _ _) = False
-          -- isTd (Tg _ _) = error "not supposed to happen"
+          isTd (Tg _ _) = error "not supposed to happen"
           res = map toTask $ -- TODO
                 groupBy ((==) `on` fst) $
                 sortBy (compare `on` ttname . fst) $
@@ -191,21 +191,16 @@ expandTd tt (Td n deps) = map (\x -> (x, r)) l
 
 expandTd' :: [RawTask] -> String -> [RawTask]
 expandTd' tt s = filter (matches . ttname) tt
-    where matches r = case parse (matcher s) "" r of
-              Right _ -> True
-              Left  _ -> False
-matcher [] = eof >> return ""
-matcher ('*':xs) = star anyChar $ matcher xs
-matcher (c:xs) = do
-    char c
-    y <- matcher xs
-    return $ c:y
-    
-star x p = (try np) <|> p
-    where np = do
-            a <- x
-            b <- star x p
-            return $ a:b
+    where matches y = and $ on (==) length a b : zipWith match a b
+              where a = splitBy '.' s
+                    b = splitBy '.' y
+          match "*" _ = True
+          match  x  y = x==y
+
+splitBy _ [] = []
+splitBy c s = splitBy' c s
+splitBy' c s = x : if y==[] then [] else splitBy' c $ drop 1 y
+    where (x,y) = span (/=c) s
 
 -- | Expands groups.
 -- This involves renaming Tt's after their parents
@@ -220,10 +215,12 @@ expandTg' p t = case t of
     Td n deps -> [Td (tdren n) (map tdren deps)]
     where normname "" x = x
           normname p x = p++'.':x
-          tdren s = p ++ tdren' ('.':s)
-          tdren' [] = []
-          tdren' ('.':'!':s) = tdren' s
-          tdren' (c:s) = c : tdren' s
+          tdren k = intercalate "." $ fix $ splitBy '.' $ normname p k
+          fix [] = []
+          fix (x:"!":s) = fix s
+          fix ("!":s) = error "bad '!'."
+          fix (x:s) = x : fix s
+
 
 -- TODO REM
 test s f = case parse taskParser  "" s of

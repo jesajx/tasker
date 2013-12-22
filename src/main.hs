@@ -20,7 +20,9 @@ main = do
     cont <- readFile arg1
     case parse taskParser arg1 cont of
         Right ts -> do
+            putStrLn "raw tasks:"
+            mapM_ print ts
             putStrLn "tasks:"
-            mapM_ (print) $ refine ts
+            mapM_ print $ refine ts
         Left err -> print err
 
