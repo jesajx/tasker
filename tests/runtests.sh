@@ -9,6 +9,6 @@ for f in $dir/test*.tsk ; do
     fname=$(basename $f)
     fdir=$(dirname $f)
     res=$fdir/res/$fname.txt
-    echo Parsing: $f,  Res: $res
+    echo Parsing:$f,  Res:$res
     "$tsk" "$f" 2>&1 > "$res"
 done

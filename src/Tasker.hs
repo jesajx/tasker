@@ -1,72 +1,40 @@
 
 module Tasker
-( Task(..)
-, taskParser
-, normalize
-, cmpDeadline
+( module Tasker -- TODO
 ) where
 
 import Text.ParserCombinators.Parsec
 import System.Locale (defaultTimeLocale)
 import Data.Time
 import Data.Function (on)
+import Data.List (partition, isPrefixOf, nub, groupBy, sortBy)
 
 
+type Deadline = Maybe UTCTime
 
 -- | The Task datatype.
 -- Can be a single task or a group of tasks.
 -- Note that the name is used as a key -
 -- different tasks should not have the same name!
 data Task = Task { name :: String,
-                   deadline :: Maybe UTCTime,
-                   description :: String }
-          | TaskGroup { name :: String, tasks :: [Task] }
+                   deadline :: Deadline,
+                   description :: String,
+                   dependencies :: [String] }
           deriving Show
 
+-- TODO test deps
+-- TODO deps: Data.Map.Map?
+
 instance Eq Task where
-    (==) = on (==) name
-
--- | True iff the task is not a TaskGroup. Otherwise false.
-isTask (Task _ _ _) = True
-isTask _ = False
-
--- | True iff the task is a TaskGroup. Otherwise false.
-isTaskGroup (TaskGroup _ _) = True
-isTaskGroup _ = False
-
--- | Reorganizes a list of task, renaming Tasks and removing TaskGroups.
---
--- The name of each task is changed to reflect its parent group, like:
--- > newname = groupName++"."++taskName
--- This is done recursivly for taskGroups, replacing each taskgroup
--- with its children.
---
--- Example:
--- @
--- normalize
---   [Task "n" _ _,
---     TaskGroup "a" [Task "b", TaskGroup "c" [Task "d" _ _], TaskGroup "x" []]]
--- == 
--- [Task "n" _ _, Task "a.b", Task "a.c.d" _ _]
--- @
-normalize :: [Task] -> [Task]
-normalize = concatMap (normalize' "")
-
-normalize' :: String -> Task -> [Task]
-normalize' p t = case t of
-    Task k dt d    -> [Task (normname p k) dt d]
-    TaskGroup k tt -> concatMap (normalize' $ normname p k) tt
-    where normname "" x = x
-          normname p x = p++'.':x
+    (==) = (==) `on` name
 
 
 -- | Compares two Tasks by their deadline.
 --
 -- Earlier deadlines are ordered before later deadlines.
--- 'Nothing' is orderered after everything else.
--- This is function for TaskGroups.
+-- 'Just's are ordered before 'Nothing'.
 cmpDeadline :: Task -> Task -> Ordering
-cmpDeadline (Task _ ad _) (Task _ bd _) = cmp ad bd
+cmpDeadline (Task _ ad _ _) (Task _ bd _ _) = cmp ad bd
     where cmp Nothing Nothing = EQ
           cmp x Nothing = GT
           cmp Nothing y = LT
@@ -74,39 +42,54 @@ cmpDeadline (Task _ ad _) (Task _ bd _) = cmp ad bd
 
 
 -- ------------------------------------------------------------------------- --
--- =================================PARSING================================= --
+-- ==================================PARSER================================= --
 -- ------------------------------------------------------------------------- --
+
+data RawTask = Tt String Deadline String
+             | Tg String [RawTask]
+             | Td String [String]
+             deriving (Show, Eq, Ord)
+
+ttname (Tt n _ _) = n
 
 -- | Parses p then s and returns the result from p.
 followedBy p s = do {x <- p; s; return x}
 
+-- | Parses a space, @' '@.
 sp = char ' '
 sps = many sp
 sps1 = many1 sp
 
--- | Parses a task-name.
--- Allowed chars: a-z, A-Z, 0-9, \'-\', \'_\', \'.\'.
--- Note that \'.\' is allowed! See normalize.
-nameParser :: Parser String
-nameParser = many1 $ alphaNum <|> oneOf "-_."
+-- | Parser for space, @' '@, or newline, @'\n'@.
+-- I prefer this cleaner approach to Parsec's 'space'
+sl = oneOf " \n"
+sls = many sl
+sls1 = many1 sl
 
-taskNames :: Parser [(String, Maybe UTCTime)]
+-- | Parses a task-name.
+-- Allowed chars: @a-z@, @A-Z@, @0-9@, @-@, @_@.
+nameParser :: Parser String
+nameParser = many1 $ alphaNum <|> oneOf "-_"
+
+task = do
+    string "task"
+    sps1
+    nsdt <- taskNames
+    d <- option "" descriptionParser
+    return $ map (\(n,dt) -> Tt n dt d) nsdt
+
+taskNames :: Parser [(String, Deadline)]
 taskNames = sepBy1 np sp
     where np = do
             n <- nameParser; sps
             dt <- option Nothing deadlineParser; sps
             return (n,dt)
-          sp = char ',' `followedBy` spaces
-
-descriptionParser :: Parser String
+          sp = char ',' `followedBy` sls
 descriptionParser = do
     string ":"
     option "" $ do
         sp
         many $ noneOf "\n"
-
-
--- | Parses datetimestring in format @[ 09:30  2013-12-27 ]@.
 deadlineParser = do
     char '['
     sps
@@ -130,33 +113,42 @@ date = do
     char '-'
     d <- count 2 digit
     return $ y++'-':m++'-':d
-    
 
 
-task :: Parser [Task]
-task = do
-    string "task"
-    sps1
-    nsdt <- taskNames
-    d <- option "" descriptionParser
-    return $ map (\(n,dt) -> Task n dt d) nsdt
 
-    
-group :: Parser [Task]
 group = do
     string "group"
     sps1
     n <- nameParser
     sps
     ts <- option [] $ between (char '{') (char '}') items
-    return $ [TaskGroup n ts]
+    return $ [Tg n ts]
 
-item :: Parser [Task]
-item = task <|> group -- TODO dep
 
-items :: Parser [Task]
+
+dep = do
+    string "dep"
+    sps1
+    ns <- depNames
+    sps
+    char ':'
+    sps
+    deps <- depNames
+    return $ map (`Td` deps) ns
+depNames = sepBy1 np sep >>= return . concat
+    where np = nameRef `followedBy` sls
+          sep = char ',' `followedBy` sls
+nameRef = sepBy1 np sep
+    where np = (oneOf "!*" >>= \x -> return [x]) <|> nameParser
+          sep = char ',' `followedBy` sls
+
+
+
+item :: Parser [RawTask]
+item = task <|> group <|> dep -- n.b. ok since each starts with unique token.
+
 items = do
-    spaces
+    sls
     option [] $ do
         i <- item
         sps
@@ -167,14 +159,73 @@ items = do
 
 -- | Parser for task-files.
 -- See ../taskerGrammar.bnf
-taskParser :: Parser [Task]
+taskParser :: Parser [RawTask]
 taskParser = do
     r <- items
     eof
-    return r
+    return $ r -- TODO refine here?
 
+-- | Expands groups and applies deps.
+refine :: [RawTask] -> [Task]
+refine = fixDeps . expandTg
+
+fixDeps :: [RawTask] -> [Task]
+fixDeps rs = res
+    where (tds,tt) = partition isTd rs
+          isTd (Td _ _) = True
+          isTd (Tt _ _ _) = False
+          -- isTd (Tg _ _) = error "not supposed to happen"
+          res = map toTask $ -- TODO
+                groupBy ((==) `on` fst) $
+                sortBy (compare `on` ttname . fst) $
+                map (\x -> (x,[])) tt ++ concatMap (expandTd tt) tds
+          toTask :: [(RawTask,[String])] -> Task
+          toTask ts = Task n dt d $ nub $ concatMap snd ts
+              where Tt n dt d = fst $ head ts
+
+
+expandTd :: [RawTask] -> RawTask -> [(RawTask,[String])]
+expandTd tt (Td n deps) = map (\x -> (x, r)) l
+    where l = expandTd' tt n
+          r = map ttname $ concatMap (expandTd' tt) deps
+
+expandTd' :: [RawTask] -> String -> [RawTask]
+expandTd' tt s = filter (matches . ttname) tt
+    where matches r = case parse (matcher s) "" r of
+              Right _ -> True
+              Left  _ -> False
+matcher [] = eof >> return ""
+matcher ('*':xs) = star anyChar $ matcher xs
+matcher (c:xs) = do
+    char c
+    y <- matcher xs
+    return $ c:y
+    
+star x p = (try np) <|> p
+    where np = do
+            a <- x
+            b <- star x p
+            return $ a:b
+
+-- | Expands groups.
+-- This involves renaming Tt's after their parents
+-- and expanding @'!'@ in Td-strings.
+expandTg :: [RawTask] -> [RawTask]
+expandTg = concatMap (expandTg' "")
+
+expandTg' :: String -> RawTask -> [RawTask]
+expandTg' p t = case t of
+    Tt n dt d -> [Tt (normname p n) dt d]
+    Tg n tt -> concatMap (expandTg' $ normname p n) tt
+    Td n deps -> [Td (tdren n) (map tdren deps)]
+    where normname "" x = x
+          normname p x = p++'.':x
+          tdren s = p ++ tdren' ('.':s)
+          tdren' [] = []
+          tdren' ('.':'!':s) = tdren' s
+          tdren' (c:s) = c : tdren' s
 
 -- TODO REM
-test s = case parse taskParser  "" s of
-    Right x -> mapM_ print x
+test s f = case parse taskParser  "" s of
+    Right x -> mapM_ print $ f x
     Left err -> print err

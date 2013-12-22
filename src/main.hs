@@ -8,7 +8,7 @@ import System.IO ( stdin, stdout
                  )
 import System.Environment (getArgs)
 import Text.ParserCombinators.Parsec (parse)
-import Data.List (sortBy)
+import Data.List (sortBy, partition)
 
 -- -------------------------------------------------------------------------- --
 -- ===================================MAIN=================================== --
@@ -21,10 +21,6 @@ main = do
     case parse taskParser arg1 cont of
         Right ts -> do
             putStrLn "tasks:"
-            mapM_ print ts
-            putStrLn "norms:"
-            mapM_ (print) $ normalize ts
-            putStrLn "sortByDeadline:"
-            mapM_ (print) $ sortBy cmpDeadline $ normalize ts
+            mapM_ (print) $ refine ts
         Left err -> print err
 
