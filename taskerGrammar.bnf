@@ -8,6 +8,8 @@
 # and is not used to generate haskell code or any such thing.
 
 
+# TODO comments
+
 # Grammar starts in taskParser.
 
 taskParser = items, ?eof? ;

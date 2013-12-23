@@ -36,8 +36,8 @@ instance Eq Task where
 cmpDeadline :: Task -> Task -> Ordering
 cmpDeadline (Task _ ad _ _) (Task _ bd _ _) = cmp ad bd
     where cmp Nothing Nothing = EQ
-          cmp x Nothing = GT
-          cmp Nothing y = LT
+          cmp x Nothing = LT
+          cmp Nothing y = GT
           cmp (Just x) (Just y) = compare x y
 
 
@@ -82,7 +82,7 @@ taskNames :: Parser [(String, Deadline)]
 taskNames = sepBy1 np sp
     where np = do
             n <- nameParser; sps
-            dt <- option Nothing deadlineParser; sps
+            dt <- option Nothing (try deadlineParser); sps
             return (n,dt)
           sp = char ',' `followedBy` sls
 descriptionParser = do
@@ -94,7 +94,7 @@ deadlineParser = do
     char '['
     sps
     dt <- option Nothing $ do
-        st <- option "00:00" $ time `followedBy` sps1
+        st <- option "00:00" $ try $ time `followedBy` sps1
         sd <- date
         let fmt = "%H:%M %Y-%m-%d"
         return $ parseTime defaultTimeLocale fmt $ st ++ ' ':sd

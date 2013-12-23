@@ -8,11 +8,20 @@ import System.IO ( stdin, stdout
                  )
 import System.Environment (getArgs)
 import Text.ParserCombinators.Parsec (parse)
-import Data.List (sortBy, partition)
+import Data.List (sortBy, intercalate)
 
--- -------------------------------------------------------------------------- --
--- ===================================MAIN=================================== --
--- -------------------------------------------------------------------------- --
+
+
+-- TODO ops
+
+taskStr (Task n dt d deps) = "task " ++ n ++ dtStr dt ++ depStr deps ++ dStr d
+    where dtStr Nothing = ""
+          dtStr (Just k) = " [" ++ show k ++ "]"
+          depStr [] = ""
+          depStr xs = " {" ++ intercalate ", " deps ++ "}"
+          dStr "" = ""
+          dStr k = " : \"" ++ k ++ "\""
+            
 
 main = do
     args <- getArgs
@@ -20,9 +29,7 @@ main = do
     cont <- readFile arg1
     case parse taskParser arg1 cont of
         Right ts -> do
-            putStrLn "raw tasks:"
-            mapM_ print ts
-            putStrLn "tasks:"
-            mapM_ print $ refine ts
+            -- mapM_ print ts
+            mapM_ (putStrLn . taskStr) $ sortBy cmpDeadline $ refine ts
         Left err -> print err
 
