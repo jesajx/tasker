@@ -7,50 +7,97 @@ import Text.ParserCombinators.Parsec
 import System.Locale (defaultTimeLocale)
 import Data.Time
 import Data.Function (on)
-import Data.List (partition, isPrefixOf, nub, groupBy, sortBy, intercalate)
+import qualified Data.List as L
+import Data.Monoid
+import qualified Data.Map as Map
 
-
-type Deadline = Maybe UTCTime
 
 -- | The Task datatype.
--- Can be a single task or a group of tasks.
+--
 -- Note that the name is used as a key -
 -- different tasks should not have the same name!
-data Task = Task { name :: String,
-                   deadline :: Deadline,
-                   description :: String,
-                   dependencies :: [String] }
-          deriving Show
+-- 'startTime' to 'endTime' is the timeperiod where the task takes place.
+-- If endTime is 'Nothing' then startTime can be considered the deadline
+-- of the task (but this is not required).
+data Task = Task { name :: String
+                 , startTime :: Maybe UTCTime
+                 , endTime :: Maybe UTCTime
+                 , stress :: Int
+                 , description :: String
+                 }
 
--- TODO test deps
--- TODO deps: Data.Map.Map?
+instance Show Task where
+    show (Task n st et ss d) =
+        n ++ "[" ++
+        maybe "" show st ++
+        maybe "" ((" to "++) . show) et ++
+        "]" ++ replicate ss '!' ++
+        ":\"" ++ d ++ "\""
 
+-- | Tasks are equal if they have the same name.
 instance Eq Task where
-    (==) = (==) `on` name
+    (==) = (==) `on` name  -- TODO conform with Ord?
 
+-- | Task ordering: 'startTime', 'stress', 'name', 'endTime' and 'description'.
+instance Ord Task where
+    compare a b = mconcat $
+                  map (\f -> f a b)
+                  [on compare name,
+                   on cmpTime startTime,      -- Nothing last.
+                   on (flip compare) stress,  -- Greater first.
+                   on compare endTime,        -- Nothing first.
+                   on compare description]
 
--- | Compares two Tasks by their deadline.
---
--- Earlier deadlines are ordered before later deadlines.
--- 'Just's are ordered before 'Nothing'.
-cmpDeadline :: Task -> Task -> Ordering
-cmpDeadline (Task _ ad _ _) (Task _ bd _ _) = cmp ad bd
-    where cmp Nothing Nothing = EQ
-          cmp x Nothing = LT
-          cmp Nothing y = GT
-          cmp (Just x) (Just y) = compare x y
+-- | Compares 'Maybe UTCTime' such that 'Nothing' sorts last.
+cmpTime :: Maybe UTCTime -> Maybe UTCTime -> Ordering
+cmpTime (Just x) (Just y) = compare x y
+cmpTime x y = flip compare x y -- so Nothing sorts last
 
+sortTasks :: [(Task, [String])] -> [Task]
+sortTasks ts = L.sortBy cmp $ map fst ts
+    where cmp a b = (boolToOrd $ dependsOn a b) `mappend` compare a b
+          boolToOrd x = compare x False
+          ad = allDeps $ map (\(x,xs) -> (name x, xs)) ts
+          dependsOn x y = name y `elem` dd
+              where Just dd = lookup (name x) ad
+
+prune :: [(Task,[String])] -> Task -> ([(Task,[String])], [(Task,[String])])
+prune ts t = L.partition (\(x,_) -> (name x) `elem` deps) $
+             L.deleteBy ((==) `on` fst) (t,[]) ts
+    where Just deps = lookup t ts
+
+-- graphSearch :: Map.Map a [a] -> a -> a -> Bool
+-- graphSearch m x y
+--     | Map.lookup x m == Just y
+--     where hasDep a b = Map.lookup a
+
+-- allDeps :: (Eq a) => [(a,[a])] -> [(a,[a])]
+allDeps m = map (\(x,_) -> (x, L.nub $ allDeps' [] m x)) m
+-- allDeps' :: (Eq a) => [a] -> [(a,[a])] -> a -> [a]
+allDeps' p m x
+    | x `elem` p = error $ "dep cycle: '" ++ show x ++ "'."
+    | otherwise  = deps ++ concatMap (allDeps' (x:p) m) deps
+    where Just deps = lookup x m
+
+-- | Calculates the \"urgency\" of a Task.
+-- 
+-- This is done by weighing the difference in time from 'd'
+-- to the 'startTime' of the task by m:
+-- @ m*((startTime t) - d) @
+-- (and necessary type conversions).
+urgency m d t = floor $ toRational $ maybe 0 weigh $ startTime t
+    where weigh s = m*(diffUTCTime s d)
 
 -- ------------------------------------------------------------------------- --
 -- ==================================PARSER================================= --
 -- ------------------------------------------------------------------------- --
 
-data RawTask = Tt String Deadline String
+data RawTask = Tt Task
              | Tg String [RawTask]
              | Td String [String]
              deriving (Show, Eq, Ord)
 
-ttname (Tt n _ _) = n
+ttname (Tt (Task n _ _ _ _)) = n
 
 -- | Parses p then s and returns the result from p.
 followedBy p s = do {x <- p; s; return x}
@@ -76,31 +123,39 @@ task = do
     sps1
     nsdt <- taskNames
     d <- option "" descriptionParser
-    return $ map (\(n,dt) -> Tt n dt d) nsdt
+    return $ map (\(n,ds,de,s) -> Tt $ Task n ds de s d) nsdt
 
-taskNames :: Parser [(String, Deadline)]
 taskNames = sepBy1 np sp
     where np = do
-            n <- nameParser; sps
-            dt <- option Nothing (try deadlineParser); sps
-            return (n,dt)
+            n <- nameParser
+            s <- option 0 stressParser
+            (ds,de) <- option (Nothing,Nothing) (try taskTime)
+            sps
+            return (n,ds,de,s)
           sp = char ',' `followedBy` sls
+
+stressParser = return . length =<< (many1 $ char '!')
+    
 descriptionParser = do
     string ":"
     option "" $ do
         sp
         many $ noneOf "\n"
-deadlineParser = do
+taskTime = do
     char '['
     sps
-    dt <- option Nothing $ do
-        st <- option "00:00" $ try $ time `followedBy` sps1
-        sd <- date
-        let fmt = "%H:%M %Y-%m-%d"
-        return $ parseTime defaultTimeLocale fmt $ st ++ ' ':sd
+    tp <- option (Nothing, Nothing) $ do
+        s <- datetime
+        e <- option Nothing $ try $ string " to " >> datetime
+        return (s,e)
     sps
     char ']'
-    return dt
+    return tp
+datetime = do
+    d <- date
+    t <- option "00:00" $ try $ sps1 >> time
+    let fmt = "%Y-%m-%d %H:%M"
+    return $ parseTime defaultTimeLocale fmt $ d ++ " " ++ t
 time = do
     sh <- count 2 digit
     char ':'
@@ -138,7 +193,7 @@ dep = do
 depNames = sepBy1 np sep
     where np = nameRef `followedBy` sps
           sep = char ',' `followedBy` sps
-nameRef = sepBy1 np sep >>= return . intercalate "."
+nameRef = sepBy1 np sep >>= return . L.intercalate "."
     where np = (oneOf "!*" >>= \x -> return [x]) <|> nameParser
           sep = char '.' `followedBy` sps
 
@@ -163,39 +218,49 @@ taskParser :: Parser [RawTask]
 taskParser = do
     r <- items
     eof
-    return $ r -- TODO refine here?
+    return $ r
 
--- | Expands groups and applies deps.
-refine :: [RawTask] -> [Task]
-refine = fixDeps . expandTg
+-- | Expands groups and sorts into tasks and deps.
+expandRaw :: [RawTask] -> [(Task,[String])]
+expandRaw = expandDeps . expandGroups
 
-fixDeps :: [RawTask] -> [Task]
-fixDeps rs = res
-    where (tds,tt) = partition isTd rs
+
+
+-- | Expands Tt and Td into task-deps pairs.
+expandDeps :: [RawTask] -> [(Task,[String])]
+expandDeps rs = map toTask $
+                L.groupBy ((==) `on` fst) $
+                L.sortBy (compare `on` fst) $
+                map (\x -> (x,[])) ns
+                    ++ concatMap (expandTd ns) dd
+    where (dd, tt) = L.partition isTd rs
           isTd (Td _ _) = True
-          isTd (Tt _ _ _) = False
-          isTd (Tg _ _) = error "not supposed to happen"
-          res = map toTask $ -- TODO
-                groupBy ((==) `on` fst) $
-                sortBy (compare `on` ttname . fst) $
-                map (\x -> (x,[])) tt ++ concatMap (expandTd tt) tds
-          toTask :: [(RawTask,[String])] -> Task
-          toTask ts = Task n dt d $ nub $ concatMap snd ts
-              where Tt n dt d = fst $ head ts
+          isTd (Tt _)   = False
+          ts = map (\(Tt t) -> t) tt
+          ns = map name ts
+          toTask xs = (t, deps)
+              where deps = L.nub $ concatMap snd xs
+                    t = getTask $ fst $ head xs
+                    getTask n = case L.find ((==n) . name) ts of
+                            Just k  -> k
+                            Nothing -> error $ "Can not find '" ++ n ++ "'."
 
+-- | Expands wildcards in Td:s.
+expandTd :: [String] -> RawTask -> [(String, [String])]
+expandTd ns (Td dx dy) = map (\x -> (x, deps)) ts
+    where ts = expandNameRef ns dx
+          deps = concatMap (expandNameRef ns) dy
 
-expandTd :: [RawTask] -> RawTask -> [(RawTask,[String])]
-expandTd tt (Td n deps) = map (\x -> (x, r)) l
-    where l = expandTd' tt n
-          r = map ttname $ concatMap (expandTd' tt) deps
+-- | Expands the given String (task nameref) into task names.
+expandNameRef :: [String] -> String -> [String]
+expandNameRef ns n = filter (on match (splitBy '.') n) ns
+    where match [] []           = True
+          match (x:xs) (k:ks)
+              | x=="*"          = True
+              | x=="%" || x==k  = match xs ks
+              | otherwise       = False
+        
 
-expandTd' :: [RawTask] -> String -> [RawTask]
-expandTd' tt s = filter (matches . ttname) tt
-    where matches y = and $ on (==) length a b : zipWith match a b
-              where a = splitBy '.' s
-                    b = splitBy '.' y
-          match "*" _ = True
-          match  x  y = x==y
 
 splitBy _ [] = []
 splitBy c s = splitBy' c s
@@ -205,17 +270,17 @@ splitBy' c s = x : if y==[] then [] else splitBy' c $ drop 1 y
 -- | Expands groups.
 -- This involves renaming Tt's after their parents
 -- and expanding @'!'@ in Td-strings.
-expandTg :: [RawTask] -> [RawTask]
-expandTg = concatMap (expandTg' "")
+expandGroups :: [RawTask] -> [RawTask]
+expandGroups = concatMap (expandTg "")
 
-expandTg' :: String -> RawTask -> [RawTask]
-expandTg' p t = case t of
-    Tt n dt d -> [Tt (normname p n) dt d]
-    Tg n tt -> concatMap (expandTg' $ normname p n) tt
+expandTg :: String -> RawTask -> [RawTask]
+expandTg p t = case t of
+    Tt (Task n sd ed r d) -> [Tt $ Task (normname p n) sd ed r d]
+    Tg n tt   -> concatMap (expandTg $ normname p n) tt
     Td n deps -> [Td (tdren n) (map tdren deps)]
     where normname "" x = x
           normname p x = p++'.':x
-          tdren k = intercalate "." $ fix $ splitBy '.' $ normname p k
+          tdren k = L.intercalate "." $ fix $ splitBy '.' $ normname p k
           fix [] = []
           fix (x:"!":s) = fix s
           fix ("!":s) = error "bad '!'."

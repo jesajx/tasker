@@ -8,28 +8,28 @@ import System.IO ( stdin, stdout
                  )
 import System.Environment (getArgs)
 import Text.ParserCombinators.Parsec (parse)
-import Data.List (sortBy, intercalate)
+import qualified Data.List as L
+import Data.Time
 
 
 
 -- TODO ops
 
-taskStr (Task n dt d deps) = "task " ++ n ++ dtStr dt ++ depStr deps ++ dStr d
-    where dtStr Nothing = ""
-          dtStr (Just k) = " [" ++ show k ++ "]"
-          depStr [] = ""
-          depStr xs = " {" ++ intercalate ", " deps ++ "}"
-          dStr "" = ""
-          dStr k = " : \"" ++ k ++ "\""
-            
-
 main = do
     args <- getArgs
     let arg1 = args !! 0
     cont <- readFile arg1
+    now <- getCurrentTime
     case parse taskParser arg1 cont of
         Right ts -> do
-            -- mapM_ print ts
-            mapM_ (putStrLn . taskStr) $ sortBy cmpDeadline $ refine ts
+            let ss = L.sort $ expandRaw ts
+            putStrLn "###"
+            mapM_ print ss
+            putStrLn "###"
+            mapM_ print $ allDeps $ map (\(x,xs) -> (name x, xs)) ss
+            putStrLn "###"
+            mapM_ print $ sortTasks ss
+            putStrLn "###"
+            mapM_ print $ map (\(x,_) -> (x, prune ss x)) ss
         Left err -> print err
 

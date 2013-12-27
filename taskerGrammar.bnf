@@ -8,7 +8,7 @@
 # and is not used to generate haskell code or any such thing.
 
 
-# TODO comments
+# TODO comments?
 
 # Grammar starts in taskParser.
 
@@ -22,11 +22,12 @@ task = "task", sps1, taskNames, [description] ;
 group = "group", sps1, name, sps, ["{", items, "}"] ;
 dep = "dep", sps1, depNames, sps, ":", depNames ;
 
-taskNames = name, sps, deadline, sps, [",", sps, taskNames] ;
+taskNames = name, [stress], taskTime, sps, [",", sps, taskNames] ;
 description = ": ", ?noneOf:newline? ;
+stress = "!", {"!"} ;
 
-deadline = "[", sps, deadlineContent, sps "]" ;
-deadlineContent = [time, sps1], date
+taskTime = "[", sps, datetime, [" to ", datetime], sps, "]" ;
+datetime = date, [sps1, time] ;
 time = digit, digit, ":", digit, digit;
 date = year, "-", month, "-", day ;
 year = digit, digit, digit, digit ;
@@ -35,11 +36,11 @@ day = digit, digit ;
 
 depNames = nameref, sps, {",", sps, nameref} ;
 
-name = nameChar, {nameChar}
+name = nameChar, {nameChar} ;
 nameChar = ?alphaNum? | "-" | "_" | "." ;
 
 nameref = namerefpart, {".", namerefpart} ;
-namerefpart  = "!" | "*" | name ;
+namerefpart  = "!" | "*" | "%" | name ;    # "!"=parent, "*"=whatever, "%"=any
 
 
 newline = "\n" ;
