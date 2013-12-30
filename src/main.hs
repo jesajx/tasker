@@ -22,13 +22,15 @@ main = do
     now <- getCurrentTime
     case parse taskParser arg1 cont of
         Right ts -> do
+            putStrLn "###"
+            mapM_ print ts
             let ss = L.sort $ expandRaw ts
             putStrLn "###"
             mapM_ print ss
             putStrLn "###"
-            mapM_ print $ allDeps $ map (\(x,xs) -> (name x, xs)) ss
-            putStrLn "###"
             mapM_ print $ sortTasks ss
+            putStrLn "###"
+            mapM_ print $ allDeps $ map (\(x,xs) -> (name x, xs)) ss
             putStrLn "###"
             mapM_ print $ map (\(x,_) -> (x, prune ss x)) ss
         Left err -> print err

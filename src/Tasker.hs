@@ -42,9 +42,9 @@ instance Eq Task where
 instance Ord Task where
     compare a b = mconcat $
                   map (\f -> f a b)
-                  [on compare name,
-                   on cmpTime startTime,      -- Nothing last.
+                  [on cmpTime startTime,      -- Nothing last.
                    on (flip compare) stress,  -- Greater first.
+                   on compare name,
                    on compare endTime,        -- Nothing first.
                    on compare description]
 
