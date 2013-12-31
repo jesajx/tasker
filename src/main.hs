@@ -17,21 +17,14 @@ import Data.Time
 
 main = do
     args <- getArgs
-    let arg1 = args !! 0
-    cont <- readFile arg1
-    now <- getCurrentTime
-    case parse taskParser arg1 cont of
-        Right ts -> do
-            putStrLn "###"
-            mapM_ print ts
-            let ss = L.sort $ expandRaw ts
-            putStrLn "###"
-            mapM_ print ss
-            putStrLn "###"
-            mapM_ print $ sortTasks ss
-            putStrLn "###"
-            mapM_ print $ allDeps $ map (\(x,xs) -> (name x, xs)) ss
-            putStrLn "###"
-            mapM_ print $ map (\(x,_) -> (x, prune ss x)) ss
+    let action = args !! 0
+    let filename = args !! 1
+    cont <- readFile filename
+    case parse taskParser filename cont of
+        Right ts ->
+            let ss = L.sort $ expandRaw ts in
+            case action of
+                "raw"  -> mapM_ print ts
+                "ls"   -> mapM_ print $ sortTasks ss
         Left err -> print err
 
