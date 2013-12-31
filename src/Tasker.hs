@@ -48,18 +48,22 @@ instance Ord Task where
                    on compare endTime,        -- Nothing first.
                    on compare description]
 
+
+-- TODO toTaskFile
+
 -- | Compares 'Maybe UTCTime' such that 'Nothing' sorts last.
 cmpTime :: Maybe UTCTime -> Maybe UTCTime -> Ordering
 cmpTime (Just x) (Just y) = compare x y
 cmpTime x y = flip compare x y -- so Nothing sorts last
 
-sortTasks :: [(Task, [String])] -> [Task]
-sortTasks ts = L.sortBy cmp $ map fst ts
+-- | Sorts tasks with dependencies.
+sortTasks :: [(Task, [String])] -> [(Task, [String])]
+sortTasks ts = L.sortBy (cmp `on` fst) ts
     where cmp a b = (boolToOrd $ dependsOn a b) `mappend` compare a b
           boolToOrd x = compare x False
-          ad = allDeps $ map (\(x,xs) -> (name x, xs)) ts
+          ad = allDeps ts
           dependsOn x y = name y `elem` dd
-              where Just dd = lookup (name x) ad
+              where Just dd = lookup x ad
 
 prune :: [(Task,[String])] -> Task -> ([(Task,[String])], [(Task,[String])])
 prune ts t = L.partition (\(x,_) -> (name x) `elem` deps) $
@@ -71,13 +75,16 @@ prune ts t = L.partition (\(x,_) -> (name x) `elem` deps) $
 --     | Map.lookup x m == Just y
 --     where hasDep a b = Map.lookup a
 
--- allDeps :: (Eq a) => [(a,[a])] -> [(a,[a])]
+allDeps :: [(Task,[String])] -> [(Task,[String])]
 allDeps m = map (\(x,_) -> (x, L.nub $ allDeps' [] m x)) m
--- allDeps' :: (Eq a) => [a] -> [(a,[a])] -> a -> [a]
+allDeps' :: [Task] -> [(Task,[String])] -> Task -> [String]
 allDeps' p m x
     | x `elem` p = error $ "dep cycle: '" ++ show x ++ "'."
-    | otherwise  = deps ++ concatMap (allDeps' (x:p) m) deps
+    | otherwise  = deps ++ concatMap (allDeps' (x:p) m . getByName) deps
     where Just deps = lookup x m
+          getByName s =
+            let Just k = lookup s $ map (\(y,_) ->  (name y, y)) m
+            in k
 
 -- | Calculates the \"urgency\" of a Task.
 -- 
