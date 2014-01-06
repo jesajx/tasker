@@ -201,7 +201,7 @@ depNames = sepBy1 np sep
     where np = nameRef `followedBy` sps
           sep = char ',' `followedBy` sps
 nameRef = sepBy1 np sep >>= return . L.intercalate "."
-    where np = (oneOf "!*" >>= \x -> return [x]) <|> nameParser
+    where np = (oneOf "!*%" >>= \x -> return [x]) <|> nameParser
           sep = char '.' `followedBy` sps
 
 
@@ -262,11 +262,13 @@ expandTd ns (Td dx dy) = map (\x -> (x, deps)) ts
 expandNameRef :: [String] -> String -> [String]
 expandNameRef ns n = filter (on match (splitBy '.') n) ns
     where match [] []           = True
-          match (x:xs) (k:ks)
-              | x=="*"          = True
-              | x=="%" || x==k  = match xs ks
-              | otherwise       = False
-        
+          match ("*":xs) ks     = s xs ks
+          match ("%":xs) (k:ks) = match xs ks
+          match (x:xs) (k:ks)   = x==k && match xs ks
+          match _ _             = False
+          s [] []     = True
+          s _ []      = False
+          s xs (k:ks) = match xs (k:ks) || s xs ks
 
 
 splitBy _ [] = []

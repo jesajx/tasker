@@ -26,7 +26,7 @@ taskNames = name, [stress], taskTime, sps, [",", sps, taskNames] ;
 description = ": ", ?noneOf:newline? ;
 stress = "!", {"!"} ;
 
-taskTime = "[", sps, datetime, [" to ", datetime], sps, "]" ;
+taskTime = "[", sps, [datetime, [" to ", datetime], sps], "]" ;
 datetime = date, [sps1, time] ;
 time = digit, digit, ":", digit, digit;
 date = year, "-", month, "-", day ;
