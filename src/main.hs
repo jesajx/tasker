@@ -2,66 +2,135 @@
 
 import Tasker
 import System.IO ( stdin, stdout
-                 , openFile, hClose
-                 , IOMode(ReadMode, WriteMode)
+                 , openFile, hClose , IOMode(ReadMode, WriteMode)
                  , hGetContents, hPutStrLn
                  )
 import System.Environment (getArgs)
+import System.Locale (defaultTimeLocale)
+import System.Console.GetOpt
 import Text.ParserCombinators.Parsec (parse)
 import qualified Data.List as L
 import Data.Time
+import Data.Function (on)
+import Data.Maybe (fromMaybe)
+
+
+gt :: (Ord a) => a -> a -> Bool
+gt = (>)
+lt :: (Ord a) => a -> a -> Bool
+lt = (<)
+eq :: (Ord a) => a -> a -> Bool
+eq = (==)
+ne :: (Ord a) => a -> a -> Bool
+ne = (not .) . eq
+ge :: (Ord a) => a -> a -> Bool
+ge = (not .) . lt
+le :: (Ord a) => a -> a -> Bool
+le = (not .) . gt
 
 data Options = Options
-    { nameExprs :: [(String,Bool)]
-    , stressExprs :: [(Int, Ordering)]
-    , datetimeExpr :: [(datetime, Ordering)]  -- TODO intervals?
+    { nameExprs :: [(String -> String -> Bool,String)]
+    , stressExprs :: [(Int -> Int -> Bool,Int)]
+    , datetimeExprs :: [(UTCTime -> UTCTime -> Bool,UTCTime)]
     }
 
--- TODO use othertype then Ordering. to implement >=, <= and <> ?
 
-defaultOptions now = Options
-    { nameExpr = []
-    , stressExpr = []
-    , datetimeExpr :: [(now, GT)]   -- EQ too?
+defaultOptions = Options
+    { nameExprs = []
+    , stressExprs = []
+    , datetimeExprs = []
     }
 
-options :: [OptDescr (Options -> Options)]
+-- parseOperator :: (Ord a) => String -> (a -> a -> Bool, String)
+parseOperator ('!':'=':n) = (ne,n)
+parseOperator ('<':'=':n) = (le,n)
+parseOperator ('>':'=':n) = (ge,n)
+parseOperator ('=':n) = (eq, n)
+parseOperator ('<':n) = (lt, n)
+parseOperator ('>':n) = (gt, n)
+parseOperator _ = error "bad operator!"
+
+
+--parseOptName :: String -> (String -> String -> Bool, String)
+parseOptName ('=':n) = (eq, n)
+parseOptName ('!':'=':n) = (ne,n)
+parseOptName _ = error "bad operator!"
+
+--parseOptStress :: String -> ((Int -> Int -> Bool), Int)
+parseOptStress opt = (b,read n) 
+    where (b,n) = parseOperator opt
+
+
+-- TODO add relative datetimes? like --datetime>=now, --datetime<friday
+--parseOptDatetime :: String -> (UTCTime -> UTCTime -> Bool, UTCTime)
+parseOptDatetime opt = (b,d)
+    where (b,n) = parseOperator opt
+          fmt = "%Y-%m-%d %H:%M" -- TODO globalize fmt in Tasker.hs?
+          Just d = parseTime defaultTimeLocale fmt $ n
+
+
+addNameExpr n (Options ns ss ds) = Options (n:ns) ss ds
+addStressExpr s (Options ns ss ds) = Options ns (s:ss) ds
+addDatetimeExpr d (Options ns ss ds) = Options ns ss (d:ds)
+
+
+options :: [OptDescr (Options -> Options)] -- TODO
 options =
-    [ Option ['n'] ["name"] (ReqArg \n -> (n, True))
-        "Expression to whitelist full tasknames. May be used multiple times."
-    , Option ['m'] ["notname"] (ReqArg \n -> (n, False))
-        "Expression to blacklist full tasknames. May be used multiple times."
-    , Option ['s'] ["stress"] (ReqArg parseOptStress)
-        "filter stress."
-    , Option ['d'] ["datetime"] (ReqArg parseOptDatetime)
-        "filter datetime."
+    [ Option ['n'] ["name"]
+        (ReqArg (addNameExpr . parseOptName) "EXPR")
+        "Expression to filter full tasknames. May be used multiple times."
+    , Option ['s'] ["stress"]
+        (ReqArg (addStressExpr . parseOptStress) "EXPR")
+        "Expression to filter stress. May be used multiple times."
+    , Option ['d'] ["datetime"]
+        (ReqArg (addDatetimeExpr . parseOptDatetime) "EXPR")
+        "Expression to filter datetime. May be used multiple times."
     ]
 
--- TODO how to implement operators? --stress=1 >1 <1 !=1 <>1 >=1 <=1
+parseOptions args = do
+    now <- getCurrentTime
+    case getOpt Permute options args of
+        (o, p, []) -> return (foldl (flip id) defaultOptions o, p)
+        (_, _, errs) -> ioError $ uerr errs
+    where header = "Usage: tsk [OPTIONS...] tskfiles..."
+          uerr errs = userError $ concat errs ++ usageInfo header options
+
+
+-- | Tests a Task against given Options.
+matchTask :: Options -> Task -> Bool
+matchTask (Options ns ss ds) (Task n d _ s _) =
+    (and $ map (\(b,m) -> b n m) ns)
+    && (and $ map (\(b,m) -> b s m) ss)
+    && matchDatetime ds d
+
+matchDatetime ds Nothing = True
+matchDatetime ds (Just d) = and (map (\(b,m) -> b d m) ds)
+
+getTasks :: String -> IO [(Task,[String])]
+getTasks filename = do
+    cont <- if filename == "-" then getContents else readFile filename
+    case parse taskParser filename cont of
+        Right ts -> return $ expandRaw ts
+        Left err -> error $ show err
+
 -- TODO better way to implement ordering? "<>"s needs escaping in most shells.
 -- TODO better way to implement ordering for datetimes? intervals?
 -- TODO more detailed descriptions
 
--- TODO opts
---  --name=expr : e.g. --name="agroup.*", --name="agroup.*.mytask", etc.
---  --notname=expr : e.g. --notname "agroup.*.mytask"
---  --stress op num : eg. stress=1, stress>0, etc.
---  --datetime op datetime : e.g. datetime<'2014-01-01 00:00', etc.
---
---  unnecessary?:
---   --with-complete : include completed tasks
---   --without-complete : don't include completed tasks (default?)
+-- opts:
+--  --name[!]=expr : e.g. --name="agroup.*", --name!="agroup.*.mytask", etc.
+--  --stressOPnum : eg. --stress=1, --stress>0, etc.
+--  --datetimeOPdatetime : e.g. --datetime<'2014-01-01 00:00', etc.
+-- TODO opts:
+--  --prependfilenames : task "agroup.mytask" in file "f" ==> "f.agroup.mytask"
+--  --with-complete : include completed tasks
+--  --without-complete : don't include completed tasks (default?)
 main = do
     args <- getArgs
-    case length args of
-        0 -> printTaskList "-"
-        1 -> printTaskList (args !! 0)
-        _ -> error "too many files!"
-
-printTaskList filename = do
-    cont <- if filename == "-" then getContents else readFile filename
-    case parse taskParser filename cont of
-        Right ts -> let ss = L.sort $ expandRaw ts
-                    in mapM_ print $ sortTasks ss
-        Left err -> print err
+    (opts, filenames) <- parseOptions args
+    taskLists <- mapM getTasks filenames
+    tasks <- return $ L.sort $ concat taskLists
+    ftasks <- return $ filter (matchTask opts . fst) tasks
+    print ftasks
+    
 
