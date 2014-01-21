@@ -27,12 +27,10 @@ data Task = Task { name :: String
                  }
 
 instance Show Task where
-    show (Task n st et s d) =
-        n ++ "[" ++
-        maybe "" show st ++
-        maybe "" ((" to "++) . show) et ++
-        "]" ++ replicate s '!' ++
-        ":\"" ++ d ++ "\""
+    show (Task n st et s d) = n ++ replicate s '!' ++ dateStr ++ descrStr
+        where dateStr = maybe "" (\x -> "[" ++ show x ++ endDateStr ++ "]") st
+              endDateStr = maybe "" (\y -> " to "++ show y) et
+              descrStr = if d=="" then "" else ": " ++ d
 
 -- | Tasks are equal if they have the same name.
 instance Eq Task where

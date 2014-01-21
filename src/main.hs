@@ -113,8 +113,24 @@ getTasks filename = do
         Right ts -> return $ expandRaw ts
         Left err -> error $ show err
 
+
+
+-- TODO
+taskString (Task n st et s d) [pn,pst,pet,ps,pd] =
+    showIf pn n ++
+    showIf ps (replicate s '!') ++
+    showIf pst dateStr ++
+    showIf pd descrStr
+    where dateStr = maybe "" (\x -> "[" ++ show x ++ endDateStr ++ "]") st
+          endDateStr = showIf pet $ maybe "" (\y -> " to "++ show y) et
+          descrStr = if d=="" then "" else ": " ++ d
+          showIf b x = if b then x else ""
+
+taskItemString (t, deps) = show t ++ " @deps" ++ show deps
+
 -- TODO better way to implement ordering? "<>"s needs escaping in most shells.
 -- TODO better way to implement ordering for datetimes? intervals?
+-- TODO do filtering through complete expressions? 's>1||datetime>2014-01-30'
 -- TODO more detailed descriptions
 
 -- opts:
@@ -125,12 +141,17 @@ getTasks filename = do
 --  --prependfilenames : task "agroup.mytask" in file "f" ==> "f.agroup.mytask"
 --  --with-complete : include completed tasks
 --  --without-complete : don't include completed tasks (default?)
+--  --no-print-deps : don't print deps for tasks
+--    etc. for different attributes..., stress,name,datetime,description,.etc
 main = do
     args <- getArgs
-    (opts, filenames) <- parseOptions args
-    taskLists <- mapM getTasks filenames
-    tasks <- return $ L.sort $ concat taskLists
-    ftasks <- return $ filter (matchTask opts . fst) tasks
-    print ftasks
+    if length args == 0 then
+            error $ usageInfo "Usage: tsk [OPTIONS...] tskfiles..." options
+        else do
+            (opts, filenames) <- parseOptions args
+            taskLists <- mapM getTasks filenames
+            tasks <- return $ L.sort $ concat taskLists
+            ftasks <- return $ filter (matchTask opts . fst) tasks
+            mapM_ (putStrLn . taskItemString) ftasks
     
 
