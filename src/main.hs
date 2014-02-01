@@ -121,12 +121,14 @@ taskString (Task n st et s d) [pn,pst,pet,ps,pd] =
     showIf ps (replicate s '!') ++
     showIf pst dateStr ++
     showIf pd descrStr
-    where dateStr = maybe "" (\x -> "[" ++ show x ++ endDateStr ++ "]") st
-          endDateStr = showIf pet $ maybe "" (\y -> " to "++ show y) et
+    where dateStr = maybe "" (\x -> "[" ++ showTime x ++ endDateStr ++ "]") st
+          endDateStr = showIf pet $ maybe "" (\y -> " to "++ showTime y) et
           descrStr = if d=="" then "" else ": " ++ d
           showIf b x = if b then x else ""
+          showTime = formatTime defaultTimeLocale fmt
+          fmt = "%Y-%m-%d %H:%M" -- TODO globalize fmt in Tasker.hs?
 
-taskItemString (t, deps) = show t ++ " @deps" ++ show deps
+taskItemString (t, deps) = taskString t [True,True,True,True,True] ++ " @deps" ++ show deps
 
 -- TODO better way to implement ordering? "<>"s needs escaping in most shells.
 -- TODO better way to implement ordering for datetimes? intervals?
@@ -143,6 +145,7 @@ taskItemString (t, deps) = show t ++ " @deps" ++ show deps
 --  --without-complete : don't include completed tasks (default?)
 --  --no-print-deps : don't print deps for tasks
 --    etc. for different attributes..., stress,name,datetime,description,.etc
+--  --limit=N : print maximum the top n rows(tasks). unnecessary? head instead?
 main = do
     args <- getArgs
     if length args == 0 then
