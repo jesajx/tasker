@@ -143,6 +143,7 @@ taskItemString (t, deps) = show t ++ " @deps" ++ show deps
 --  --without-complete : don't include completed tasks (default?)
 --  --no-print-deps : don't print deps for tasks
 --    etc. for different attributes..., stress,name,datetime,description,.etc
+--  --filter=expr : e.g. 'name!=group.mytask & (datetime>today | stress > 1)'
 main = do
     args <- getArgs
     if length args == 0 then
@@ -153,5 +154,5 @@ main = do
             tasks <- return $ L.sort $ concat taskLists
             ftasks <- return $ filter (matchTask opts . fst) tasks
             mapM_ (putStrLn . taskItemString) ftasks
-    
+
 
