@@ -128,6 +128,7 @@ taskString (Task n st et s d) [pn,pst,pet,ps,pd] =
           showTime = formatTime defaultTimeLocale fmt
           fmt = "%Y-%m-%d %H:%M" -- TODO globalize fmt in Tasker.hs?
 
+taskItemString (t, []) = taskString t [True,True,True,True,True]
 taskItemString (t, deps) = taskString t [True,True,True,True,True] ++ " @deps" ++ show deps
 
 -- TODO better way to implement ordering? "<>"s needs escaping in most shells.
