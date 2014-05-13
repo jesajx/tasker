@@ -48,3 +48,23 @@ sps1 = space, spaces ;
 sps = {space} ;
 sp = " " ;
 digit = 1|2|3|4|5|6|7|8|9;
+
+
+
+
+# TODO
+filterExpr = filterOr ;
+filterOr = filterAnd, ["|", filterOr] ;
+filterAnd = filterCmp, ["&", filterAnd] ;
+filterCmp = filterVal, [cmpOperator, filterVal];
+cmpOperator = "<", ["="]
+            | ">", ["="]
+            | "="
+            | "!="
+            ;
+filterVal = "(", filterExpr, ")"
+          | filterVar
+          ;
+filterVar = "name" | "startdate" | "enddate" | "stress" ;
+         
+
