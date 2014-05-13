@@ -21,15 +21,13 @@ import qualified Data.Map as Map
 -- of the task (but this is not required).
 data Task = Task { name :: String
                  , startTime :: Maybe UTCTime
-                 , endTime :: Maybe UTCTime
                  , stress :: Int
                  , description :: String
                  }
 
 instance Show Task where
-    show (Task n st et s d) = n ++ replicate s '!' ++ dateStr ++ descrStr
-        where dateStr = maybe "" (\x -> "[" ++ show x ++ endDateStr ++ "]") st
-              endDateStr = maybe "" (\y -> " to "++ show y) et
+    show (Task n st s d) = n ++ replicate s '!' ++ dateStr ++ descrStr
+        where dateStr = maybe "" (\x -> "[" ++ show x ++ "]") st
               descrStr = if d=="" then "" else ": " ++ d
 
 -- | Tasks are equal if they have the same name.
@@ -43,11 +41,9 @@ instance Ord Task where
                   [on cmpTime startTime,      -- Nothing last.
                    on (flip compare) stress,  -- Greater first.
                    on compare name,
-                   on compare endTime,        -- Nothing first.
                    on compare description]
 
-
--- TODO toTaskFile
+-- TODO toTaskFile?
 
 -- | Compares 'Maybe UTCTime' such that 'Nothing' sorts last.
 cmpTime :: Maybe UTCTime -> Maybe UTCTime -> Ordering
@@ -55,6 +51,7 @@ cmpTime (Just x) (Just y) = compare x y
 cmpTime x y = flip compare x y -- so Nothing sorts last
 
 -- | Sorts tasks with dependencies.
+-- TODO broken?
 sortTasks :: [(Task, [String])] -> [(Task, [String])]
 sortTasks ts = L.sortBy (cmp `on` fst) ts
     where cmp a b = (boolToOrd $ dependsOn a b) `mappend` compare a b
@@ -102,7 +99,7 @@ data RawTask = Tt Task
              | Td String [String]
              deriving (Show, Eq, Ord)
 
-ttname (Tt (Task n _ _ _ _)) = n
+ttname (Tt (Task n _ _ _)) = n
 
 -- | Parses p then s and returns the result from p.
 followedBy p s = do {x <- p; s; return x}
@@ -128,15 +125,15 @@ task = do
     sps1
     nsdt <- taskNames
     d <- option "" descriptionParser
-    return $ map (\(n,ds,de,s) -> Tt $ Task n ds de s d) nsdt
+    return $ map (\(n,ds,s) -> Tt $ Task n ds s d) nsdt
 
 taskNames = sepBy1 np sp
     where np = do
             n <- nameParser
             s <- option 0 stressParser
-            (ds,de) <- option (Nothing,Nothing) (try taskTime)
+            ds <- option Nothing (try taskTime)
             sps
-            return (n,ds,de,s)
+            return (n,ds,s)
           sp = char ',' `followedBy` sls
 
 stressParser = return . length =<< (many1 $ char '!')
@@ -149,10 +146,7 @@ descriptionParser = do
 taskTime = do
     char '['
     sps
-    tp <- option (Nothing, Nothing) $ do
-        s <- datetime
-        e <- option Nothing $ try $ string " to " >> datetime
-        return (s,e)
+    tp <- option Nothing datetime
     sps
     char ']'
     return tp
@@ -282,7 +276,7 @@ expandGroups = concatMap (expandTg "")
 
 expandTg :: String -> RawTask -> [RawTask]
 expandTg p t = case t of
-    Tt (Task n sd ed r d) -> [Tt $ Task (normname p n) sd ed r d]
+    Tt (Task n sd r d) -> [Tt $ Task (normname p n) sd r d]
     Tg n tt   -> concatMap (expandTg $ normname p n) tt
     Td n deps -> [Td (tdren n) (map tdren deps)]
     where normname "" x = x
