@@ -114,19 +114,18 @@ getTasks filename = do
         Left err -> error $ show err
 
 -- TODO
-taskString (Task n st s d) [pn,pst,ps,pd] =
-    showIf pn n ++
-    showIf ps (replicate s '!') ++
-    showIf pst dateStr ++
-    showIf pd descrStr
+taskItemString :: (Task, [String]) -> String
+taskItemString ((Task n st s d), deps) =
+    n ++ (replicate s '!') ++ dateStr ++ descrStr
     where dateStr = maybe "" (\x -> "[" ++ showTime x ++ "]") st
-          descrStr = if d=="" then "" else ": " ++ d
-          showIf b x = if b then x else ""
-          showTime = formatTime defaultTimeLocale fmt
-          fmt = "%Y-%m-%d %H:%M" -- TODO globalize fmt in Tasker.hs?
-
-taskItemString (t, []) = taskString t [True,True,True,True,True]
-taskItemString (t, deps) = taskString t [True,True,True,True,True] ++ " @deps" ++ show deps
+            where showTime = formatTime defaultTimeLocale fmt
+                  fmt = "%Y-%m-%d %H:%M" -- TODO globalize fmt in Tasker.hs?
+          descrStr
+            | d == "" && deps == []     = ""
+            | d == ""                   = ": " ++ depStr
+            | deps == []                = ": " ++ d
+            | otherwise                 = ": " ++ d ++ " " ++ depStr
+          depStr = "@deps[" ++ L.intercalate ", " deps ++ "]"
 
 
 -- TODO better way to implement ordering? "<>"s needs escaping in most shells.

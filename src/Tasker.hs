@@ -10,15 +10,13 @@ import Data.Function (on)
 import qualified Data.List as L
 import Data.Monoid
 import qualified Data.Map as Map
+-- TODO use Data.graph for depsorting?
 
 
 -- | The Task datatype.
 --
--- Note that the name is used as a key -
+-- Note that the name is used as a key, i.e.
 -- different tasks should not have the same name!
--- 'startTime' to 'endTime' is the timeperiod where the task takes place.
--- If endTime is 'Nothing' then startTime can be considered the deadline
--- of the task (but this is not required).
 data Task = Task { name :: String
                  , startTime :: Maybe UTCTime
                  , stress :: Int
@@ -54,24 +52,19 @@ cmpTime x y = flip compare x y -- so Nothing sorts last
 -- TODO broken?
 sortTasks :: [(Task, [String])] -> [(Task, [String])]
 sortTasks ts = L.sortBy (cmp `on` fst) ts
-    where cmp a b = (boolToOrd $ dependsOn a b) `mappend` compare a b
-          boolToOrd x = compare x False
+    where cmp a b = depcmp a b `mappend` compare a b
+          depcmp a b 
+            | dependsOn a b = GT
+            | dependsOn b a = LT
+            | otherwise     = EQ
           ad = allDeps ts
           dependsOn x y = name y `elem` dd
               where Just dd = lookup x ad
 
-prune :: [(Task,[String])] -> Task -> ([(Task,[String])], [(Task,[String])])
-prune ts t = L.partition (\(x,_) -> (name x) `elem` deps) $
-             L.deleteBy ((==) `on` fst) (t,[]) ts
-    where Just deps = lookup t ts
-
--- graphSearch :: Map.Map a [a] -> a -> a -> Bool
--- graphSearch m x y
---     | Map.lookup x m == Just y
---     where hasDep a b = Map.lookup a
 
 allDeps :: [(Task,[String])] -> [(Task,[String])]
 allDeps m = map (\(x,_) -> (x, L.nub $ allDeps' [] m x)) m
+
 allDeps' :: [Task] -> [(Task,[String])] -> Task -> [String]
 allDeps' p m x
     | x `elem` p = error $ "dep cycle: '" ++ show x ++ "'."
