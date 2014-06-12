@@ -50,7 +50,7 @@ executable tsk
   -- other-modules:       
   
   -- Other library packages from which modules are imported.
-  build-depends:       base ==4.6.*, parsec ==3.1.*, old-locale ==1.0.*, time ==1.4.*, containers ==0.5.*
+  build-depends:       base ==4.7.*, parsec ==3.1.*, old-locale ==1.0.*, time ==1.4.*, containers ==0.5.*
   
   -- Directories containing source files.
   hs-source-dirs:      src

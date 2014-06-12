@@ -37,7 +37,7 @@ day = digit, digit ;
 depNames = nameref, sps, {",", sps, nameref} ;
 
 name = nameChar, {nameChar} ;
-nameChar = ?alphaNum? | "-" | "_" | "." ;
+nameChar = ?alphaNum? | "-" | "_" ;
 
 nameref = namerefpart, {".", namerefpart} ;
 namerefpart  = "!" | "*" | "%" | name ;    # "!"=parent, "*"=whatever, "%"=any
